@@ -6,6 +6,7 @@ Current port mapping:
 
 - Port A: steering motor
 - Port B: rear traction motor
+- Port C: tilt sensor (an alarm sounds when tilted more than 15° on either axis; use the Arm/Disarm button in the sensor panel)
 - Port D: front traction motor
 
 Keyboard controls:

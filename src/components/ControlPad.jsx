@@ -22,8 +22,7 @@ function HoldButton({ label, className, onPress, onRelease }) {
 
 export function ControlPad({
   drivePower,
-  startSteering,
-  stopSteering,
+  pulseSteering,
   setDrive,
   stopAll,
 }) {
@@ -42,8 +41,8 @@ export function ControlPad({
         <HoldButton
           className="control-button"
           label="LEFT"
-          onPress={() => startSteering(-1)}
-          onRelease={() => stopSteering()}
+          onPress={() => pulseSteering(-1)}
+          onRelease={() => {}}
         />
 
         <button type="button" className="control-button stop-button" onClick={stopAll}>
@@ -53,8 +52,8 @@ export function ControlPad({
         <HoldButton
           className="control-button"
           label="RIGHT"
-          onPress={() => startSteering(1)}
-          onRelease={() => stopSteering()}
+          onPress={() => pulseSteering(1)}
+          onRelease={() => {}}
         />
 
         <div></div>

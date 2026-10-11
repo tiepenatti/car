@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   plugins: [react()],
-  base: command === 'build' ? '/car/' : '/',
+  base: command === 'build' ? process.env.BASE_PATH ?? '/tmp-car/' : '/',
   server: {
     port: 8081,
   },
@@ -12,3 +12,4 @@ export default defineConfig(({ command }) => ({
     port: 8081,
   },
 }))
+

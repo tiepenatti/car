@@ -5,6 +5,7 @@ import { ControlPad } from './components/ControlPad'
 import { SensorPanel } from './components/SensorPanel'
 import { ServoSettingsPanel } from './components/ServoSettingsPanel'
 import { useLegoHubController } from './hooks/useLegoHubController'
+import { useTiltAlarm } from './hooks/useTiltAlarm'
 import './App.css'
 
 function App() {
@@ -22,12 +23,14 @@ function App() {
     connect,
     disconnect,
     clearCommandLog,
-    startSteering,
-    stopSteering,
+    pulseSteering,
     setDrive,
     stopAll,
     forceStopSteering,
   } = useLegoHubController()
+  // Hub tilt reports [yaw, pitch, roll]; yaw is heading, not tilt.
+  const tiltAngles = Array.isArray(distanceSensor.value) ? distanceSensor.value.slice(1) : distanceSensor.value
+  const tiltAlarm = useTiltAlarm(tiltAngles, connected)
 
   return (
     <main className="app-shell">
@@ -39,8 +42,7 @@ function App() {
       />
       <ControlPad
         drivePower={drivePower}
-        startSteering={startSteering}
-        stopSteering={stopSteering}
+        pulseSteering={pulseSteering}
         setDrive={setDrive}
         stopAll={stopAll}
       />
@@ -52,7 +54,7 @@ function App() {
         servoPosition={servoPosition}
         forceStopSteering={forceStopSteering}
       />
-      <SensorPanel distanceSensor={distanceSensor} servoPulseMs={servoPulseMs} servoSpeedPct={servoSpeedPct} servoPosition={servoPosition} />
+      <SensorPanel tiltAlarm={tiltAlarm} distanceSensor={distanceSensor} servoPulseMs={servoPulseMs} servoSpeedPct={servoSpeedPct} servoPosition={servoPosition} />
       <CommandLogPanel entries={commandLog} onClear={clearCommandLog} />
       <ControlHelpPanel />
     </main>

@@ -5,8 +5,9 @@ const CHARACTERISTIC_UUID = '00001624-1212-efde-1623-785feabcd123'
 
 const PORT_A = 0x00 // steering
 const PORT_B = 0x01 // rear traction
-const PORT_C = 0x02 // distance sensor
+const PORT_C = 0x02
 const PORT_D = 0x03 // front traction
+const PORT_HUB_TILT = 0x63 // built-in tilt sensor (mode 0: yaw/pitch/roll in degrees)
 const HUB_ATTACHED_IO = 0x04
 const ERROR_MESSAGE = 0x05
 const PORT_MODE_INFO = 0x44
@@ -43,6 +44,7 @@ const PORT_LABELS = {
   [PORT_B]: 'B',
   [PORT_C]: 'C',
   [PORT_D]: 'D',
+  [PORT_HUB_TILT]: 'Tilt',
 }
 
 const MESSAGE_TYPE_LABELS = {
@@ -428,6 +430,7 @@ export function useLegoHubController() {
     notifyEnabled: false,
   })
 
+  const sensorAttachedRef = useRef(() => {})
   const deviceRef = useRef(null)
   const characteristicRef = useRef(null)
 
@@ -505,7 +508,12 @@ export function useLegoHubController() {
       )
       appendLog('RX', 'Hub notification', bytes)
 
-      if (bytes[2] === PORT_MODE_INFO && bytes[3] === PORT_C && bytes[4] === DISTANCE_SENSOR_MODE && bytes[5] === MODE_INFO_VALUE_FORMAT) {
+      if (bytes[2] === HUB_ATTACHED_IO && bytes[3] === PORT_HUB_TILT && bytes[4] === 0x01) {
+        sensorAttachedRef.current()
+        return
+      }
+
+      if (bytes[2] === PORT_MODE_INFO && bytes[3] === PORT_HUB_TILT && bytes[4] === DISTANCE_SENSOR_MODE && bytes[5] === MODE_INFO_VALUE_FORMAT) {
         distanceFormatRef.current = {
           mode: bytes[4],
           dataFormat: bytes[7],
@@ -523,7 +531,7 @@ export function useLegoHubController() {
         return
       }
 
-      if (bytes[2] === PORT_INPUT_FORMAT_SINGLE && bytes[3] === PORT_C && bytes[4] === DISTANCE_SENSOR_MODE) {
+      if (bytes[2] === PORT_INPUT_FORMAT_SINGLE && bytes[3] === PORT_HUB_TILT && bytes[4] === DISTANCE_SENSOR_MODE) {
         setDistanceSensor((previous) => ({
           ...previous,
           notifyEnabled: Boolean(bytes[9]),
@@ -531,7 +539,7 @@ export function useLegoHubController() {
         return
       }
 
-      if (bytes[2] === PORT_VALUE_SINGLE && bytes[3] === PORT_C) {
+      if (bytes[2] === PORT_VALUE_SINGLE && bytes[3] === PORT_HUB_TILT) {
         const payload = bytes.slice(4)
         const decodedValue = decodeDistanceValue(
           payload,
@@ -651,15 +659,15 @@ export function useLegoHubController() {
 
   const requestDistanceSensorFormat = useCallback(async () => {
     await writeCommand(
-      'Distance sensor format request',
-      buildPortModeInfoRequestCommand(PORT_C, DISTANCE_SENSOR_MODE, MODE_INFO_VALUE_FORMAT),
+      'Tilt sensor format request',
+      buildPortModeInfoRequestCommand(PORT_HUB_TILT, DISTANCE_SENSOR_MODE, MODE_INFO_VALUE_FORMAT),
     )
   }, [writeCommand])
 
   const enableDistanceSensorNotifications = useCallback(async () => {
     await writeCommand(
-      'Enable distance sensor notifications',
-      buildPortInputFormatSetupCommand(PORT_C, DISTANCE_SENSOR_MODE, DISTANCE_DELTA, true),
+      'Enable tilt sensor notifications',
+      buildPortInputFormatSetupCommand(PORT_HUB_TILT, DISTANCE_SENSOR_MODE, DISTANCE_DELTA, true),
     )
   }, [writeCommand])
 
@@ -685,12 +693,16 @@ export function useLegoHubController() {
     await steerTo(0, 'Center steering')
   }, [steerTo])
 
-  const startSteering = useCallback(
-    async (direction) => {
-      const target = direction < 0 ? -STEERING_MAX : STEERING_MAX
-      await steerTo(target, `Steer ${direction < 0 ? 'left' : 'right'}`)
+  const pulseSteering = useCallback(
+    (direction) => {
+      const power = direction < 0 ? -servoSpeedPct : servoSpeedPct
+      const dir = direction < 0 ? 'left' : 'right'
+      writeCommand(`Steer pulse ${dir} ${servoSpeedPct}% ${servoPulseMs}ms`, buildStartPowerCommand(PORT_A, power))
+      setTimeout(() => {
+        writeCommand('Steer pulse brake', buildStartPowerCommand(PORT_A, 127))
+      }, servoPulseMs)
     },
-    [steerTo],
+    [servoPulseMs, servoSpeedPct, writeCommand],
   )
 
   const stepSteering = useCallback(
@@ -758,18 +770,21 @@ export function useLegoHubController() {
       }
 
       characteristic.removeEventListener('characteristicvaluechanged', handleNotification)
-      await characteristic.startNotifications()
 
+      // Listen before enabling notifications so the hub's attach messages are not missed.
       deviceRef.current = device
       characteristicRef.current = characteristic
       device.addEventListener('gattserverdisconnected', handleDisconnected)
       characteristic.addEventListener('characteristicvaluechanged', handleNotification)
+      sensorAttachedRef.current = async () => {
+        await requestDistanceSensorFormat()
+        await enableDistanceSensorNotifications()
+      }
+      await characteristic.startNotifications()
       setConnected(true)
       setStatus(`Connected to ${device.name || 'LEGO Hub'}`)
 
       await zeroSteeringEncoder()
-      await requestDistanceSensorFormat()
-      await enableDistanceSensorNotifications()
     } catch (error) {
       setStatus(`Error: ${String(error)}`)
       console.error(error)
@@ -854,12 +869,7 @@ export function useLegoHubController() {
 
       if (key === '1' || key === '3') {
         event.preventDefault()
-        const power = key === '1' ? -servoSpeedPct : servoSpeedPct
-        const dir = key === '1' ? 'left' : 'right'
-        writeCommand(`Steer pulse ${dir} ${servoSpeedPct}% ${servoPulseMs}ms`, buildStartPowerCommand(PORT_A, power))
-        setTimeout(() => {
-          writeCommand(`Steer pulse brake`, buildStartPowerCommand(PORT_A, 127))
-        }, servoPulseMs)
+        pulseSteering(key === '1' ? -1 : 1)
         return
       }
 
@@ -940,7 +950,7 @@ export function useLegoHubController() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [stepSteering, syncDriveFromKeyboard, sendDrivePower, sendPortDPower, forceStopSteering, writeCommand, servoPulseMs, servoSpeedPct, updateSteeringTarget])
+  }, [stepSteering, syncDriveFromKeyboard, sendDrivePower, sendPortDPower, forceStopSteering, pulseSteering, writeCommand, servoPulseMs, servoSpeedPct, updateSteeringTarget])
 
   return {
     connected,
@@ -956,8 +966,7 @@ export function useLegoHubController() {
     connect,
     disconnect,
     clearCommandLog,
-    startSteering,
-    stopSteering,
+    pulseSteering,
     setDrive,
     stopAll,
     forceStopSteering,

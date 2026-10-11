@@ -16,7 +16,7 @@ function formatSensorValue(value, decimals) {
   return String(value)
 }
 
-export function SensorPanel({ distanceSensor, servoPulseMs, servoSpeedPct, servoPosition }) {
+export function SensorPanel({ tiltAlarm, distanceSensor, servoPulseMs, servoSpeedPct, servoPosition }) {
   return (
     <section className="sensor-panel">
       <div className="servo-speed">
@@ -28,10 +28,19 @@ export function SensorPanel({ distanceSensor, servoPulseMs, servoSpeedPct, servo
       </div>
 
       <div className="sensor-panel-header">
-        <h2>Distance Sensor</h2>
+        <h2>Tilt Sensor</h2>
         <span className={`sensor-badge ${distanceSensor.notifyEnabled ? 'sensor-badge-live' : ''}`}>
           {distanceSensor.notifyEnabled ? 'Live' : 'Idle'}
         </span>
+      </div>
+
+      <div className="servo-speed" style={tiltAlarm.alarmActive ? { color: '#c00', fontWeight: 700 } : undefined}>
+        {tiltAlarm.alarmActive ? '🚨 ALARM: not flat!' : tiltAlarm.tilted ? 'Tilted (alarm disarmed)' : 'Flat'}
+        &nbsp;&nbsp;
+        <button type="button" onClick={tiltAlarm.toggleArmed}>
+          {tiltAlarm.armed ? 'Disarm alarm' : 'Arm alarm'}
+        </button>
+        &nbsp;<span style={{ opacity: 0.5 }}>(&gt;{tiltAlarm.thresholdDeg}° on any axis)</span>
       </div>
 
       <div className="sensor-reading">{formatSensorValue(distanceSensor.value, distanceSensor.decimals)}</div>
