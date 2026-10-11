@@ -16,6 +16,11 @@ Keyboard controls:
 - Right: steer right while held
 - Key release: send stop for that axis
 
+## GitHub Pages
+
+The app is hosted on GitHub Pages at [https://tiepenatti.github.io/tmp-car/](https://tiepenatti.github.io/tmp-car/).
+The site is built with Vite and deployed from the `pages` branch by the GitHub Actions workflow. The HTTPS site provides the secure context required by Web Bluetooth; open it in a supported browser and connect to the LEGO hub.
+
 ## Run on localhost
 
 Web Bluetooth requires a secure context. `localhost` is allowed, so run the app locally with Vite.
@@ -34,7 +39,7 @@ npm run start
 
 This command:
 
-- serves the app on localhost
+- serves the app on port 8081, reachable from localhost and your network IP
 - watches files for changes
 - rebuilds automatically
 - hot refreshes the page in the browser
@@ -42,8 +47,10 @@ This command:
 3. Open:
 
 ```text
-http://localhost:5173/
+http://localhost:8081/
 ```
+
+Web Bluetooth only works from `localhost` or HTTPS, not from a plain `http://<ip>` address.
 
 You can still use `npm run dev` if you want the default Vite command, but `npm run start` is the intended local workflow.
 
