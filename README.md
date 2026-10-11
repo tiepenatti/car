@@ -17,6 +17,37 @@ Keyboard controls:
 - Right: steer right while held
 - Key release: send stop for that axis
 
+## Voice control
+
+Voice control uses [Vosk](https://alphacephei.com/vosk/) via [vosk-browser](https://github.com/ccoreilly/vosk-browser) (Apache 2.0). Speech is recognised entirely in the browser, so no audio is sent to a server. The recogniser is limited to the command phrases below, which makes it accurate for short commands and makes it ignore other speech.
+
+How to use it:
+
+1. Connect to the hub.
+2. Tap the big **MIC** button under the control pad. Voice control is off by default and the page does not listen to anything until you turn it on.
+3. Allow microphone access when the browser asks. The first time, the English speech model (about 40 MB) is downloaded, which can take a little while. After that it comes from the browser cache.
+4. Say a command, starting with "car".
+5. Tap the MIC button again to turn voice control off. This also stops the car.
+
+Commands:
+
+| Say | Action |
+| --- | --- |
+| "car go forward" / "car forward" / "car go" | Drive forward until stopped |
+| "car go back" / "car back" / "car reverse" | Drive backward until stopped |
+| "car turn left" / "car left" | One steering pulse left |
+| "car turn right" / "car right" | One steering pulse right |
+| "stop" / "car stop" | Stop driving and centre steering |
+
+Notes:
+
+- "Stop" works without "car" and is acted on as soon as it is heard, before the phrase finishes.
+- Forward and backward keep driving until you say "stop", press STOP, or turn the mic off.
+- Each left/right command is a single steering pulse. Increase the pulse duration in Servo Settings for bigger turns.
+- Microphone access needs HTTPS or `localhost`, the same as Web Bluetooth.
+- Motor noise reduces accuracy, so speak close to the device running the page.
+- The model is loaded from `https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-en-us-0.15.tar.gz` by default. To host it yourself, set `VITE_VOSK_MODEL_URL` at build time to another URL that serves the `.tar.gz` with CORS enabled.
+
 ## GitHub Pages
 
 The app is hosted on GitHub Pages at [https://tiepenatti.github.io/tmp-car/](https://tiepenatti.github.io/tmp-car/).
