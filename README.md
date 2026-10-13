@@ -84,6 +84,16 @@ http://localhost:8081/
 
 Web Bluetooth only works from `localhost` or HTTPS, not from a plain `http://<ip>` address.
 
+### HTTPS for testing on a phone
+
+To test on another device (for example a phone on the same Wi-Fi), serve over HTTPS:
+
+```bash
+npm run start:https
+```
+
+Open the `Network: https://<your-ip>:8081/` address it prints. The certificate is self-signed, so the browser shows a warning the first time; choose **Advanced → Proceed** to continue. Hot reload works the same as `npm run start`.
+
 You can still use `npm run dev` if you want the default Vite command, but `npm run start` is the intended local workflow.
 
 ## Production preview
