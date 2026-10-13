@@ -477,6 +477,89 @@
   white-space: normal;
 }
 
+/* Joystick */
+.joystick-open {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+.joystick-open .connect-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.joystick-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.joystick-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.joystick-readout {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.joystick-base {
+  position: relative;
+  width: min(84vw, 380px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.9) 70%);
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.joystick-dead-zone {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px dashed rgba(239, 68, 68, 0.6);
+  pointer-events: none;
+}
+
+.joystick-knob {
+  position: absolute;
+  width: 30%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f8fafc, #94a3b8 55%, #475569);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5);
+  cursor: grab;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.joystick-knob:not(.joystick-knob-active) {
+  transition: left 0.15s ease-out, top 0.15s ease-out;
+}
+
+.joystick-knob-active {
+  cursor: grabbing;
+  background: radial-gradient(circle at 35% 30%, #bbf7d0, #22c55e 55%, #15803d);
+}
+
+.joystick-settings {
+  width: 100%;
+}
+
 /* Control Help Panel */
 .control-help-panel {
   margin-top: 28px;

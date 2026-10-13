@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { CommandLogPanel } from './components/CommandLogPanel'
 import { ConnectionPanel } from './components/ConnectionPanel'
 import { ControlHelpPanel } from './components/ControlHelpPanel'
 import { ControlPad } from './components/ControlPad'
+import { JoystickPage } from './components/JoystickPage'
 import { SensorPanel } from './components/SensorPanel'
 import { ServoSettingsPanel } from './components/ServoSettingsPanel'
 import { VoiceHelpPanel } from './components/VoiceHelpPanel'
@@ -34,6 +36,7 @@ function App() {
   // Hub tilt reports [yaw, pitch, roll]; yaw is heading, not tilt.
   const tiltAngles = Array.isArray(distanceSensor.value) ? distanceSensor.value.slice(1) : distanceSensor.value
   const tiltAlarm = useTiltAlarm(tiltAngles, connected)
+  const [view, setView] = useState('main')
   const voice = useVoiceControl((action) => {
     if (action === 'forward') setDrive(-drivePower)
     else if (action === 'backward') setDrive(drivePower)
@@ -41,6 +44,23 @@ function App() {
     else if (action === 'right') pulseSteering(1)
     else if (action === 'stop') stopAll()
   })
+
+  if (view === 'joystick' && connected) {
+    return (
+      <main className="app-shell">
+        <JoystickPage
+          setDrive={setDrive}
+          pulseSteering={pulseSteering}
+          stopAll={stopAll}
+          servoPulseMs={servoPulseMs}
+          setServoPulseMs={setServoPulseMs}
+          servoSpeedPct={servoSpeedPct}
+          setServoSpeedPct={setServoSpeedPct}
+          onBack={() => setView('main')}
+        />
+      </main>
+    )
+  }
 
   return (
     <main className="app-shell">
@@ -50,6 +70,11 @@ function App() {
         onConnect={connect}
         onDisconnect={disconnect}
       />
+      <div className="joystick-open">
+        <button type="button" className="connect-button" onClick={() => setView('joystick')} disabled={!connected}>
+          Open joystick
+        </button>
+      </div>
       <ControlPad
         drivePower={drivePower}
         pulseSteering={pulseSteering}
