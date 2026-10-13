@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { CommandLogPanel } from './components/CommandLogPanel'
 import { ConnectionPanel } from './components/ConnectionPanel'
 import { ControlHelpPanel } from './components/ControlHelpPanel'
@@ -36,13 +36,24 @@ function App() {
   // Hub tilt reports [yaw, pitch, roll]; yaw is heading, not tilt.
   const tiltAngles = Array.isArray(distanceSensor.value) ? distanceSensor.value.slice(1) : distanceSensor.value
   const tiltAlarm = useTiltAlarm(tiltAngles, connected)
+  const voiceTimerRef = useRef(null)
   const [view, setView] = useState('main')
-  const voice = useVoiceControl((action) => {
+
+  const stopEverything = () => {
+    clearTimeout(voiceTimerRef.current)
+    stopAll()
+  }
+
+  const voice = useVoiceControl(({ action, seconds }) => {
+    // Steering pulses must not cancel a timed drive, or the car would keep going.
+    if (action !== 'left' && action !== 'right') clearTimeout(voiceTimerRef.current)
     if (action === 'forward') setDrive(-drivePower)
     else if (action === 'backward') setDrive(drivePower)
     else if (action === 'left') pulseSteering(-1)
     else if (action === 'right') pulseSteering(1)
-    else if (action === 'stop') stopAll()
+    else if (action === 'stop') stopEverything()
+
+    if (seconds) voiceTimerRef.current = setTimeout(() => setDrive(0), seconds * 1000)
   })
 
   if (view === 'joystick' && connected) {
@@ -51,7 +62,7 @@ function App() {
         <JoystickPage
           setDrive={setDrive}
           pulseSteering={pulseSteering}
-          stopAll={stopAll}
+          stopAll={stopEverything}
           servoPulseMs={servoPulseMs}
           setServoPulseMs={setServoPulseMs}
           servoSpeedPct={servoSpeedPct}
@@ -79,7 +90,7 @@ function App() {
         drivePower={drivePower}
         pulseSteering={pulseSteering}
         setDrive={setDrive}
-        stopAll={stopAll}
+        stopAll={stopEverything}
       />
       <VoicePanel voice={voice} connected={connected} />
       <ServoSettingsPanel

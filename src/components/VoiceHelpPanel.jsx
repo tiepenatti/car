@@ -36,6 +36,10 @@ export function VoiceHelpPanel() {
           <h3>Tips</h3>
           <ul className="voice-help-tips">
             <li>Forward and backward keep driving until you say “stop” or press STOP.</li>
+            <li>
+              Add a duration from one to ten seconds to drive for a set time, for example “car go forward two seconds” or
+              “car reverse for three seconds”. Steering commands during a timed drive do not cancel it.
+            </li>
             <li>Each left/right command is one steering pulse. Raise the pulse duration in Servo Settings for bigger turns.</li>
             <li>Motor noise makes recognition harder, so speak close to the device that is running this page.</li>
             <li>Needs HTTPS or localhost for microphone access, same as Web Bluetooth.</li>

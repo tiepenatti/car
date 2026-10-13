@@ -35,6 +35,7 @@ Commands:
 | --- | --- |
 | "car go forward" / "car forward" / "car go" | Drive forward until stopped |
 | "car go back" / "car back" / "car reverse" | Drive backward until stopped |
+| Any forward or backward phrase + "two seconds" / "for two seconds" | Drive for that many seconds (one to ten), then stop |
 | "car turn left" / "car left" | One steering pulse left |
 | "car turn right" / "car right" | One steering pulse right |
 | "stop" / "car stop" | Stop driving and centre steering |
@@ -42,7 +43,8 @@ Commands:
 Notes:
 
 - "Stop" works without "car" and is acted on as soon as it is heard, before the phrase finishes.
-- Forward and backward keep driving until you say "stop", press STOP, or turn the mic off.
+- Forward and backward keep driving until you say "stop", press STOP, or turn the mic off, unless you give a duration such as "car go forward two seconds".
+- Steering commands during a timed drive do not cancel the timer. A new forward, backward or stop command replaces it.
 - Each left/right command is a single steering pulse. Increase the pulse duration in Servo Settings for bigger turns.
 - Microphone access needs HTTPS or `localhost`, the same as Web Bluetooth.
 - Motor noise reduces accuracy, so speak close to the device running the page.

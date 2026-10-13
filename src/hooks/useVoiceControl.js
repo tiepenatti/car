@@ -5,30 +5,63 @@ const MODEL_URL =
   'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-en-us-0.15.tar.gz'
 
 export const VOICE_COMMANDS = [
-  { action: 'forward', label: 'Drive forward (keeps going until stop)', phrases: ['car go forward', 'car forward', 'car go'] },
-  { action: 'backward', label: 'Drive backward (keeps going until stop)', phrases: ['car go back', 'car back', 'car reverse'] },
+  {
+    action: 'forward',
+    label: 'Drive forward until stop, or for 1–10 seconds',
+    phrases: ['car go forward', 'car forward', 'car go'],
+    timed: true,
+  },
+  {
+    action: 'backward',
+    label: 'Drive backward until stop, or for 1–10 seconds',
+    phrases: ['car go back', 'car back', 'car reverse'],
+    timed: true,
+  },
   { action: 'left', label: 'Steering pulse left', phrases: ['car turn left', 'car left'] },
   { action: 'right', label: 'Steering pulse right', phrases: ['car turn right', 'car right'] },
   { action: 'stop', label: 'Stop driving and centre steering', phrases: ['stop', 'car stop'] },
 ]
 
+const NUMBER_WORDS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
+
+function timedPhrases(phrase) {
+  return NUMBER_WORDS.flatMap((number) => {
+    const unit = number === 'one' ? 'second' : 'seconds'
+    return [`${phrase} ${number} ${unit}`, `${phrase} for ${number} ${unit}`]
+  })
+}
+
 // "[unk]" lets the recogniser reject speech that is not one of the phrases instead of forcing a match.
-const GRAMMAR = JSON.stringify([...VOICE_COMMANDS.flatMap((command) => command.phrases), '[unk]'])
+const GRAMMAR = JSON.stringify([
+  ...VOICE_COMMANDS.flatMap((command) =>
+    command.timed ? [...command.phrases, ...command.phrases.flatMap(timedPhrases)] : command.phrases,
+  ),
+  '[unk]',
+])
 
-export function parseVoiceCommand(text) {
-  const words = text.split(/\s+/).filter((word) => word && word !== '[unk]')
-
-  if (words.includes('stop')) return 'stop'
-
-  const carIndex = words.lastIndexOf('car')
-  if (carIndex === -1) return null
-
-  const rest = words.slice(carIndex + 1)
+function findAction(rest) {
   if (rest.includes('left')) return 'left'
   if (rest.includes('right')) return 'right'
   if (rest.includes('back') || rest.includes('reverse')) return 'backward'
   if (rest.includes('forward') || rest.includes('go')) return 'forward'
   return null
+}
+
+export function parseVoiceCommand(text) {
+  const words = text.split(/\s+/).filter((word) => word && word !== '[unk]')
+
+  if (words.includes('stop')) return { action: 'stop' }
+
+  const carIndex = words.lastIndexOf('car')
+  if (carIndex === -1) return null
+
+  const rest = words.slice(carIndex + 1)
+  const action = findAction(rest)
+  if (!action) return null
+
+  const numberIndex = NUMBER_WORDS.findIndex((number) => rest.includes(number))
+  const timed = numberIndex !== -1 && (action === 'forward' || action === 'backward')
+  return timed ? { action, seconds: numberIndex + 1 } : { action }
 }
 
 let modelPromise = null
@@ -69,9 +102,9 @@ export function useVoiceControl(onCommand) {
     onCommandRef.current = onCommand
   }, [onCommand])
 
-  const runAction = useCallback((action) => {
-    setLastAction({ action, time: Date.now() })
-    onCommandRef.current(action)
+  const runAction = useCallback((command) => {
+    setLastAction({ ...command, time: Date.now() })
+    onCommandRef.current(command)
   }, [])
 
   const stopListening = useCallback(() => {
@@ -114,9 +147,9 @@ export function useVoiceControl(onCommand) {
         if (!partial) return
         setHeard(partial)
         // React to "stop" as soon as it is heard instead of waiting for the end of the phrase.
-        if (!stopFiredRef.current && parseVoiceCommand(partial) === 'stop') {
+        if (!stopFiredRef.current && parseVoiceCommand(partial)?.action === 'stop') {
           stopFiredRef.current = true
-          runAction('stop')
+          runAction({ action: 'stop' })
         }
       })
 
@@ -127,9 +160,9 @@ export function useVoiceControl(onCommand) {
         if (!text) return
 
         setHeard(text)
-        const action = parseVoiceCommand(text)
-        if (action && !(action === 'stop' && alreadyStopped)) {
-          runAction(action)
+        const command = parseVoiceCommand(text)
+        if (command && !(command.action === 'stop' && alreadyStopped)) {
+          runAction(command)
         }
       })
 
@@ -161,7 +194,7 @@ export function useVoiceControl(onCommand) {
       stopListening()
       setStatus('off')
       // Voice drive commands keep running, so turning the mic off must not leave the car moving.
-      runAction('stop')
+      runAction({ action: 'stop' })
       return
     }
 

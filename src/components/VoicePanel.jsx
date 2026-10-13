@@ -39,7 +39,12 @@ export function VoicePanel({ voice, connected }) {
         {error && <p className="voice-error">{error}</p>}
         {listening && !connected && <p className="voice-warning">Hub not connected: commands are recognised but not sent.</p>}
         {heard && <p className="voice-heard">Heard: “{heard}”</p>}
-        {lastAction && <p className="voice-action">Last command: {ACTION_LABELS[lastAction.action]}</p>}
+        {lastAction && (
+          <p className="voice-action">
+            Last command: {ACTION_LABELS[lastAction.action]}
+            {lastAction.seconds ? ` for ${lastAction.seconds} s` : ''}
+          </p>
+        )}
       </div>
     </section>
   )
