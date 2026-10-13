@@ -50,6 +50,39 @@ Notes:
 - Motor noise reduces accuracy, so speak close to the device running the page.
 - The model is loaded from `https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-en-us-0.15.tar.gz` by default. To host it yourself, set `VITE_VOSK_MODEL_URL` at build time to another URL that serves the `.tar.gz` with CORS enabled.
 
+## Camera follow mode
+
+Camera follow mode uses [MediaPipe Pose Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) (`@mediapipe/tasks-vision`, Apache 2.0) to find a person, the "commander", in the camera feed. It then steers and drives the car to keep that person centred and close. Everything runs on the device, so no video is sent anywhere.
+
+How to use it:
+
+1. Open the page on a phone and connect to the hub. Android Chrome supports both Web Bluetooth and the camera. iOS browsers do not support Web Bluetooth.
+2. Mount the phone on the car with the back camera facing forward, so the feed shows what the car sees.
+3. Tap the **CAMERA** button. The camera is off by default. The first time, the pose model (about 6 MB) and the MediaPipe engine (about 4 MB compressed) are downloaded.
+4. Check the feed window. The commander is drawn with a skeleton, a bounding box and a dot on the torso. Blue means tracking only.
+5. Tap **START FOLLOWING**. The overlay turns green and the car starts following.
+
+How following works:
+
+- **Steering:** the car steers towards the centre of the commander's torso. Inside the centre zone, shown by the dashed lines, it drives straight. Further off-centre it steers harder, up to the full steering angle. It uses absolute steering positions. On this car a positive steering-motor angle turns the wheels left, so follow mode inverts the sign (`STEER_MOTOR_DIRECTION` in `useVisionFollow.js`).
+- **Distance:** the commander's height in the frame stands in for distance. The car drives forward until the commander fills the follow distance (default 70% of the frame height), then stops. It starts again once the commander drops 8% below that. The outlined bar on the right of the feed shows the follow distance, and the solid bar shows the commander's current height.
+- **Power:** the car drives at full power, the same as the FWD button. Lower power was too weak to move the car.
+- **Command overlay:** while following, the bottom of the feed shows the current command. It is an arrow leaning the way the car is turning, a red STOP when close enough, or a grey LOST when nobody is in view.
+- **Debug mode:** the **Debug** button keeps follow mode working out commands and drawing them, as yellow arrows with a "DEBUG · commands not sent" banner, but sends nothing over Bluetooth. Turning debug on stops the car.
+- **Settings:** the follow distance can be adjusted with the slider under the feed. **Switch camera** toggles between the back and front cameras.
+
+Safety:
+
+- The car stops and centres the steering if nobody is seen for about 0.6 seconds.
+- The STOP button, the voice "stop" command, turning the camera off, switching cameras, and switching away from the page all end following.
+- The car never reverses in follow mode.
+
+The pose model is loaded from Google's MediaPipe model storage by default. To host it yourself, set `VITE_POSE_MODEL_URL` at build time. The MediaPipe WebAssembly engine is bundled with the app.
+
+## Lazy loading
+
+Loading the page and driving with the buttons or keyboard downloads only the main app (about 70 KB compressed). The voice and vision libraries, their models, the microphone and the camera are loaded or started only when you press the MIC or CAMERA button.
+
 ## GitHub Pages
 
 The app is hosted on GitHub Pages at [https://tiepenatti.github.io/tmp-car/](https://tiepenatti.github.io/tmp-car/).

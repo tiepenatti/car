@@ -6,10 +6,13 @@ import { ControlPad } from './components/ControlPad'
 import { JoystickPage } from './components/JoystickPage'
 import { SensorPanel } from './components/SensorPanel'
 import { ServoSettingsPanel } from './components/ServoSettingsPanel'
+import { VisionHelpPanel } from './components/VisionHelpPanel'
+import { VisionPanel } from './components/VisionPanel'
 import { VoiceHelpPanel } from './components/VoiceHelpPanel'
 import { VoicePanel } from './components/VoicePanel'
 import { useLegoHubController } from './hooks/useLegoHubController'
 import { useTiltAlarm } from './hooks/useTiltAlarm'
+import { useVisionFollow } from './hooks/useVisionFollow'
 import { useVoiceControl } from './hooks/useVoiceControl'
 import './App.css'
 
@@ -18,6 +21,7 @@ function App() {
     connected,
     status,
     drivePower,
+    steeringMax,
     servoPulseMs,
     setServoPulseMs,
     servoSpeedPct,
@@ -29,6 +33,7 @@ function App() {
     disconnect,
     clearCommandLog,
     pulseSteering,
+    steerToAngle,
     setDrive,
     stopAll,
     forceStopSteering,
@@ -36,11 +41,15 @@ function App() {
   // Hub tilt reports [yaw, pitch, roll]; yaw is heading, not tilt.
   const tiltAngles = Array.isArray(distanceSensor.value) ? distanceSensor.value.slice(1) : distanceSensor.value
   const tiltAlarm = useTiltAlarm(tiltAngles, connected)
+  const vision = useVisionFollow({ steerToAngle, setDrive, stopAll, drivePower, steeringMax })
+
   const voiceTimerRef = useRef(null)
   const [view, setView] = useState('main')
 
+  // Follow mode re-sends drive commands every frame, so a manual stop has to end it too.
   const stopEverything = () => {
     clearTimeout(voiceTimerRef.current)
+    if (vision.following) vision.setFollowing(false)
     stopAll()
   }
 
@@ -93,6 +102,7 @@ function App() {
         stopAll={stopEverything}
       />
       <VoicePanel voice={voice} connected={connected} />
+      <VisionPanel vision={vision} connected={connected} />
       <ServoSettingsPanel
         servoPulseMs={servoPulseMs}
         setServoPulseMs={setServoPulseMs}
@@ -105,6 +115,7 @@ function App() {
       <CommandLogPanel entries={commandLog} onClear={clearCommandLog} />
       <ControlHelpPanel />
       <VoiceHelpPanel />
+      <VisionHelpPanel />
     </main>
   )
 }

@@ -717,6 +717,14 @@ export function useLegoHubController() {
     [steerTo],
   )
 
+  const steerToAngle = useCallback(
+    async (angle) => {
+      const target = clamp(Math.round(angle / STEERING_STEP) * STEERING_STEP, -STEERING_MAX, STEERING_MAX)
+      await steerTo(target, `Steer → ${target}°`)
+    },
+    [steerTo],
+  )
+
   const syncDriveFromKeyboard = useCallback(async () => {
     const keys = pressedKeysRef.current
 
@@ -963,10 +971,12 @@ export function useLegoHubController() {
     setServoSpeedPct,
     servoPosition,
     drivePower: DRIVE_POWER,
+    steeringMax: STEERING_MAX,
     connect,
     disconnect,
     clearCommandLog,
     pulseSteering,
+    steerToAngle,
     setDrive,
     stopAll,
     forceStopSteering,
