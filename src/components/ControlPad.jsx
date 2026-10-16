@@ -9,11 +9,13 @@ function HoldButton({ label, className, onPress, onRelease }) {
       className={className}
       onPointerDown={(event) => {
         event.preventDefault()
+        event.currentTarget.setPointerCapture(event.pointerId)
         onPress()
       }}
       onPointerUp={release}
       onPointerLeave={release}
       onPointerCancel={release}
+      onContextMenu={(event) => event.preventDefault()}
     >
       {label}
     </button>

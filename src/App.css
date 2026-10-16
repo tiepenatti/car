@@ -10,6 +10,43 @@
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
 }
 
+.battery-indicator-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.battery-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.battery-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.battery-good .battery-dot {
+  background: #22c55e;
+}
+
+.battery-low .battery-dot {
+  background: #f59e0b;
+}
+
+.battery-critical .battery-dot {
+  background: #ef4444;
+}
+
 .connection-panel {
   text-align: center;
 }
@@ -144,6 +181,11 @@
   cursor: pointer;
   color: #0f172a;
   background: #e2e8f0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
 }
 
 .control-button:active {
@@ -477,76 +519,110 @@
   white-space: normal;
 }
 
-/* Vision Panel */
-.vision-panel {
-  margin-top: 28px;
-  padding: 18px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+/* Vision Page */
+.vision-shell {
+  padding: 12px;
 }
 
-.vision-controls {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  flex-wrap: wrap;
-}
-
-.camera-button {
-  width: 132px;
-  height: 132px;
-  flex-shrink: 0;
-  border: 3px solid rgba(255, 255, 255, 0.25);
-  border-radius: 50%;
-  background: rgba(30, 41, 59, 0.9);
-  color: #e2e8f0;
+.vision-page {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.vision-page-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vision-page p {
+  margin: 0;
+}
+
+.vision-feed {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000000;
+}
+
+.vision-feed-idle {
+  aspect-ratio: 4 / 3;
+}
+
+.vision-feed-idle video {
+  display: none;
+}
+
+.vision-feed-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  padding: 16px;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.vision-feed video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.vision-feed canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.vision-page-status:empty {
+  display: none;
+}
+
+.vision-page-main-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.vision-big-button {
+  min-height: 64px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.9);
+  color: #e2e8f0;
+  font-size: 1rem;
   font-weight: 800;
-  letter-spacing: 0.04em;
-  font-size: 0.8rem;
+  letter-spacing: 0.03em;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.camera-button svg {
-  width: 52px;
-  height: 52px;
-  fill: currentColor;
+.vision-big-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
-.camera-button .camera-lens {
-  fill: rgba(15, 23, 42, 0.9);
-}
-
-.camera-button:disabled {
-  opacity: 0.6;
-  cursor: wait;
+.vision-big-button.vision-stop-button {
+  grid-column: 1 / -1;
+  background: #ef4444;
+  color: #ffffff;
+  min-height: 72px;
+  font-size: 1.3rem;
 }
 
 .camera-button-live {
   background: #0ea5e9;
-  border-color: #bae6fd;
   color: #ffffff;
-}
-
-.vision-status {
-  flex: 1;
-  min-width: 200px;
-}
-
-.vision-status p {
-  margin: 0 0 6px;
-}
-
-.vision-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 8px 0 10px;
 }
 
 .follow-button {
@@ -570,36 +646,57 @@
   color: #fde68a;
 }
 
-.vision-feed {
-  position: relative;
-  margin-top: 16px;
+.vision-page-toggles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.vision-page-toggles .servo-btn {
+  min-height: 44px;
+  white-space: normal;
+}
+
+.vision-page-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.55);
+  font-size: 0.9rem;
+}
+
+.vision-page-sliders input[type='range'] {
   width: 100%;
-  max-width: 640px;
-  border-radius: 12px;
-  overflow: hidden;
-  background: #000000;
+  height: 28px;
+  accent-color: #22c55e;
 }
 
-.vision-feed-hidden {
-  display: none;
+.vision-page-help summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-weight: 700;
 }
 
-.vision-feed video {
-  display: block;
-  width: 100%;
-  height: auto;
+.vision-page-help .control-help-panel {
+  margin-top: 0;
 }
 
-.vision-feed canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
+.settings-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 10px 0 14px;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
-.vision-settings {
-  margin-top: 16px;
+.settings-toggle input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 
 /* Joystick */
@@ -607,6 +704,29 @@
   display: flex;
   justify-content: center;
   margin-top: 18px;
+}
+
+.joystick-open {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.settings-title {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.steering-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 6px;
+}
+
+.steering-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .joystick-open .connect-button:disabled {

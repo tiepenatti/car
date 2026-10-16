@@ -3,44 +3,101 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const DETECT_INTERVAL_MS = 66
 const TELEMETRY_INTERVAL_MS = 200
 const LOST_TIMEOUT_MS = 600
-const MIN_VISIBILITY = 0.5
-const CENTER_DEADBAND = 0.08
-const STEER_GAIN = 1.5
-const SIZE_HYSTERESIS = 0.08
-const TORSO_LANDMARKS = [11, 12, 23, 24]
-// On this car a positive steering-motor angle turns the wheels left, so a right turn needs a negative angle.
-const STEER_MOTOR_DIRECTION = -1
+const MIN_VISIBLE_LANDMARKS = 8
+// A person must be seen this many detections in a row before being followed, which filters out one-off phantoms.
+const CONFIRM_FRAMES = 4
+export const MIN_DETECTION_CONFIDENCE = 0.5
+export const MAX_DETECTION_CONFIDENCE = 0.9
+const CENTER_DEADBAND = 0.06
+const STEER_GAIN = 2
+export const MAX_STEER_LEVEL = 3
+const DISTANCE_TOLERANCE = 0.15
+const DISTANCE_SMOOTHING = 0.35
+export const MIN_FOLLOW_DISTANCE = 0.5
+export const MAX_FOLLOW_DISTANCE = 3.5
+const LEFT_SHOULDER = 11
+const RIGHT_SHOULDER = 12
+const LEFT_HIP = 23
+const RIGHT_HIP = 24
+const TORSO_LANDMARKS = [LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_HIP, RIGHT_HIP]
+// Typical adult proportions; the distance estimate scales directly with these.
+const TORSO_LENGTH_M = 0.5
+const SHOULDER_WIDTH_M = 0.36
+// Field of view across the long side of the image, typical for phone main cameras and webcams.
+const CAMERA_LONG_SIDE_FOV_DEG = 65
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 const average = (values) => values.reduce((sum, value) => sum + value, 0) / values.length
 
-export function findCommander(landmarks) {
-  const visible = landmarks.filter((point) => point.visibility >= MIN_VISIBILITY)
-  if (visible.length < 4) return null
+function midpoint(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+
+function pixelDistance(a, b, width, height) {
+  return Math.hypot((a.x - b.x) * width, (a.y - b.y) * height)
+}
+
+function estimateDistance(landmarks, width, height, minVisibility) {
+  const seen = (index) => landmarks[index]?.visibility >= minVisibility
+  const focalPx = Math.max(width, height) / (2 * Math.tan((CAMERA_LONG_SIDE_FOV_DEG * Math.PI) / 360))
+  const shoulders = seen(LEFT_SHOULDER) && seen(RIGHT_SHOULDER)
+
+  if (shoulders && seen(LEFT_HIP) && seen(RIGHT_HIP)) {
+    const torsoPx = pixelDistance(
+      midpoint(landmarks[LEFT_SHOULDER], landmarks[RIGHT_SHOULDER]),
+      midpoint(landmarks[LEFT_HIP], landmarks[RIGHT_HIP]),
+      width,
+      height,
+    )
+    if (torsoPx > 1) return (TORSO_LENGTH_M * focalPx) / torsoPx
+  }
+
+  // Close up the hips drop out of frame; shoulder width is a rougher fallback because it shrinks when turning sideways.
+  if (shoulders) {
+    const shoulderPx = pixelDistance(landmarks[LEFT_SHOULDER], landmarks[RIGHT_SHOULDER], width, height)
+    if (shoulderPx > 1) return (SHOULDER_WIDTH_M * focalPx) / shoulderPx
+  }
+
+  return null
+}
+
+export function findCommander(landmarks, width, height, minVisibility) {
+  const visible = landmarks.filter((point) => point.visibility >= minVisibility)
+  if (visible.length < MIN_VISIBLE_LANDMARKS) return null
+  // Phantom detections rarely have a convincing pair of shoulders, and steering and distance both need them.
+  const shouldersSeen = [LEFT_SHOULDER, RIGHT_SHOULDER].every((index) => landmarks[index]?.visibility >= minVisibility)
+  if (!shouldersSeen) return null
 
   const xs = visible.map((point) => clamp(point.x, 0, 1))
   const ys = visible.map((point) => clamp(point.y, 0, 1))
   const box = { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys) }
 
   // The torso is steadier than the bounding box, which jumps around as arms and legs move.
-  const torso = TORSO_LANDMARKS.map((index) => landmarks[index]).filter((point) => point?.visibility >= MIN_VISIBILITY)
-  const centerX = torso.length > 0 ? average(torso.map((point) => point.x)) : (box.left + box.right) / 2
+  const torso = TORSO_LANDMARKS.map((index) => landmarks[index]).filter((point) => point?.visibility >= minVisibility)
+  const centerX = average(torso.map((point) => point.x))
 
-  return { box, centerX: clamp(centerX, 0, 1), size: box.bottom - box.top }
+  return { box, centerX: clamp(centerX, 0, 1), distance: estimateDistance(landmarks, width, height, minVisibility) }
 }
 
-export function computeFollowCommand(commander, previousDrive, { targetSize, steeringMax }) {
-  // turn is in degrees from the car's point of view: negative turns left, positive turns right.
+export function computeFollowCommand(commander, previousDrive, { targetDistance }) {
+  // steer is a level from the car's point of view: negative turns left, positive turns right.
   const offset = commander.centerX - 0.5
-  const turn =
-    Math.abs(offset) < CENTER_DEADBAND ? 0 : clamp(offset * 2 * steeringMax * STEER_GAIN, -steeringMax, steeringMax)
+  const outside = Math.max(0, Math.abs(offset) - CENTER_DEADBAND) / (0.5 - CENTER_DEADBAND)
+  let steer = Math.sign(offset) * Math.min(MAX_STEER_LEVEL, Math.ceil(outside * MAX_STEER_LEVEL * STEER_GAIN))
 
   // Hysteresis stops the car from twitching between drive and stop at the target distance.
   let drive = previousDrive
-  if (commander.size < targetSize - SIZE_HYSTERESIS) drive = 'forward'
-  else if (commander.size >= targetSize) drive = 'stop'
+  const { distance } = commander
+  if (distance === null) drive = 'stop'
+  else if (distance > targetDistance * (1 + DISTANCE_TOLERANCE)) drive = 'forward'
+  else if (distance < targetDistance * (1 - DISTANCE_TOLERANCE)) drive = 'backward'
+  else if (drive === 'forward' && distance <= targetDistance) drive = 'stop'
+  else if (drive === 'backward' && distance >= targetDistance) drive = 'stop'
 
-  return { turn, drive }
+  // Reversing swings the nose the opposite way, so the wheels must turn away from the commander.
+  if (drive === 'backward') steer = -steer
+
+  return { steer, drive }
 }
 
 function drawCommand(context, width, height, command, debug) {
@@ -60,12 +117,13 @@ function drawCommand(context, width, height, command, debug) {
     context.fillText('DEBUG · commands not sent', 125 * scale, 25 * scale)
   }
 
-  if (command.drive === 'forward') {
-    // The arrow leans further than the wheels so small turns are still visible.
-    const angle = (command.turn * 1.5 * Math.PI) / 180
+  if (command.drive === 'forward' || command.drive === 'backward') {
+    const angle = (command.steer * 15 * Math.PI) / 180
     const length = 110 * scale
-    context.translate(baseX, baseY)
-    context.rotate(angle)
+    context.translate(baseX, baseY - (command.drive === 'backward' ? length : 0))
+    // Pointing down for reverse; the lean still shows which way the wheels are turned.
+    if (command.drive === 'backward') context.rotate(Math.PI)
+    context.rotate(command.drive === 'backward' ? -angle : angle)
     context.fillStyle = debug ? 'rgba(250, 204, 21, 0.85)' : 'rgba(34, 197, 94, 0.85)'
     context.strokeStyle = '#ffffff'
     context.lineWidth = 2 * scale
@@ -95,10 +153,10 @@ function drawCommand(context, width, height, command, debug) {
 
 let landmarkerPromise = null
 
-function loadLandmarker() {
+function loadLandmarker(confidence) {
   if (!landmarkerPromise) {
     landmarkerPromise = import('./poseLandmarker')
-      .then(({ createPoseLandmarker }) => createPoseLandmarker())
+      .then(({ createPoseLandmarker }) => createPoseLandmarker(confidence))
       .catch((error) => {
         landmarkerPromise = null
         throw error
@@ -127,10 +185,15 @@ function drawOverlay(canvas, video, pose, landmarks, commander, command, setting
   }
   context.setLineDash([])
 
-  // Outlined bar on the right edge showing the height the commander should fill to stop the car.
-  context.strokeStyle = 'rgba(255, 255, 255, 0.8)'
-  context.lineWidth = 2
-  context.strokeRect(width - 30, height * (1 - settings.targetSize) - 1, 10, height * settings.targetSize)
+  const scale = width / 640
+  const distanceText = commander?.distance ? `${commander.distance.toFixed(1)} m` : '? m'
+  context.font = `bold ${18 * scale}px system-ui, sans-serif`
+  context.textAlign = 'right'
+  context.textBaseline = 'top'
+  context.fillStyle = 'rgba(15, 23, 42, 0.7)'
+  context.fillRect(width - 200 * scale, 10 * scale, 190 * scale, 30 * scale)
+  context.fillStyle = '#ffffff'
+  context.fillText(`${distanceText} → ${settings.targetDistance.toFixed(1)} m`, width - 20 * scale, 16 * scale)
 
   if (landmarks && commander) {
     const color = settings.following ? '#22c55e' : '#38bdf8'
@@ -144,8 +207,6 @@ function drawOverlay(canvas, video, pose, landmarks, commander, command, setting
     context.strokeRect(box.left * width, box.top * height, (box.right - box.left) * width, (box.bottom - box.top) * height)
 
     context.fillStyle = color
-    context.fillRect(width - 14, box.top * height, 10, (box.bottom - box.top) * height)
-
     context.beginPath()
     context.arc(commander.centerX * width, ((box.top + box.bottom) / 2) * height, 10, 0, Math.PI * 2)
     context.fill()
@@ -154,14 +215,16 @@ function drawOverlay(canvas, video, pose, landmarks, commander, command, setting
   if (command) drawCommand(context, width, height, command, settings.debug)
 }
 
-export function useVisionFollow({ steerToAngle, setDrive, stopAll, drivePower, steeringMax }) {
+export function useVisionFollow({ steerServo, setDrive, stopAll, drivePower }) {
   const [status, setStatus] = useState('off')
   const [error, setError] = useState('')
   const [following, setFollowingState] = useState(false)
   const [facingMode, setFacingMode] = useState('environment')
-  const [targetSize, setTargetSize] = useState(0.7)
+  const [targetDistance, setTargetDistance] = useState(2)
+  const [detectionConfidence, setDetectionConfidence] = useState(0.7)
   const [debug, setDebugState] = useState(false)
   const [telemetry, setTelemetry] = useState(null)
+  const [swapSteering, setSwapSteering] = useState(false)
 
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
@@ -173,24 +236,50 @@ export function useVisionFollow({ steerToAngle, setDrive, stopAll, drivePower, s
   const lostRef = useRef(true)
 
   useEffect(() => {
-    controlRef.current = { steerToAngle, setDrive, stopAll, drivePower, steeringMax, targetSize }
-  }, [steerToAngle, setDrive, stopAll, drivePower, steeringMax, targetSize])
+    controlRef.current = {
+      steerServo,
+      setDrive,
+      stopAll,
+      drivePower,
+      targetDistance,
+      detectionConfidence,
+      swapSteering,
+    }
+  }, [steerServo, setDrive, stopAll, drivePower, targetDistance, detectionConfidence, swapSteering])
 
-  const setFollowing = useCallback((next) => {
-    followingRef.current = next
-    setFollowingState(next)
-    driveStateRef.current = 'stop'
-    lostRef.current = true
-    if (!next) controlRef.current.stopAll?.()
+  useEffect(() => {
+    // Only update a model that is already loaded; a later load picks the value up from controlRef.
+    landmarkerPromise
+      ?.then((pose) => pose.landmarker.setOptions(pose.confidenceOptions(detectionConfidence)))
+      .catch(() => {})
+  }, [detectionConfidence])
+
+  const stopCar = useCallback(() => {
+    // stopAll also re-centres the steering on its encoder.
+    controlRef.current.stopAll?.()
   }, [])
 
-  const setDebug = useCallback((next) => {
-    debugRef.current = next
-    setDebugState(next)
-    // Commands already sent keep the motors running, so entering debug must stop the car.
-    if (next) controlRef.current.stopAll?.()
-    driveStateRef.current = 'stop'
-  }, [])
+  const setFollowing = useCallback(
+    (next) => {
+      followingRef.current = next
+      setFollowingState(next)
+      driveStateRef.current = 'stop'
+      lostRef.current = true
+      if (!next) stopCar()
+    },
+    [stopCar],
+  )
+
+  const setDebug = useCallback(
+    (next) => {
+      debugRef.current = next
+      setDebugState(next)
+      // Commands already sent keep the motors running, so entering debug must stop the car.
+      if (next) stopCar()
+      driveStateRef.current = 'stop'
+    },
+    [stopCar],
+  )
 
   const stopCamera = useCallback(() => {
     const session = sessionRef.current
@@ -211,22 +300,26 @@ export function useVisionFollow({ steerToAngle, setDrive, stopAll, drivePower, s
       if (!lostRef.current && now - (sessionRef.current?.lastSeen ?? 0) > LOST_TIMEOUT_MS) {
         lostRef.current = true
         driveStateRef.current = 'stop'
-        if (send) control.stopAll()
+        if (send) stopCar()
       }
-      return { turn: 0, drive: lostRef.current ? 'lost' : driveStateRef.current }
+      return { steer: 0, drive: lostRef.current ? 'lost' : driveStateRef.current }
     }
 
     sessionRef.current.lastSeen = now
     lostRef.current = false
     const command = computeFollowCommand(commander, driveStateRef.current, control)
     driveStateRef.current = command.drive
+    if (!send) return command
 
-    if (send) {
-      control.steerToAngle(command.turn * STEER_MOTOR_DIRECTION)
-      control.setDrive(command.drive === 'forward' ? -control.drivePower : 0)
-    }
+    // Same sign convention as the joystick: positive steers right. steerServo ignores repeats of the same target.
+    const steerSign = control.swapSteering ? -1 : 1
+    control.steerServo((steerSign * command.steer) / MAX_STEER_LEVEL)
+
+    // The hub drives forward with negative power.
+    const power = { forward: -control.drivePower, backward: control.drivePower }[command.drive] ?? 0
+    control.setDrive(power)
     return command
-  }, [])
+  }, [stopCar])
 
   const startCamera = useCallback(
     async (facing) => {
@@ -245,13 +338,13 @@ export function useVisionFollow({ steerToAngle, setDrive, stopAll, drivePower, s
           audio: false,
           video: { facingMode: { ideal: facing }, width: { ideal: 640 }, height: { ideal: 480 } },
         })
-        const pose = await loadLandmarker()
+        const pose = await loadLandmarker(controlRef.current.detectionConfidence)
 
         const video = videoRef.current
         video.srcObject = stream
         await video.play()
 
-        const session = { stream, frameId: 0, lastDetect: 0, lastTelemetry: 0, lastSeen: 0 }
+        const session = { stream, frameId: 0, lastDetect: 0, lastTelemetry: 0, lastSeen: 0, distance: null, seenFrames: 0 }
         sessionRef.current = session
 
         const loop = (now) => {
@@ -264,11 +357,24 @@ export function useVisionFollow({ steerToAngle, setDrive, stopAll, drivePower, s
 
           const result = pose.landmarker.detectForVideo(video, now)
           const landmarks = result.landmarks[0]
-          const commander = landmarks ? findCommander(landmarks) : null
+          const candidate = landmarks
+            ? findCommander(landmarks, video.videoWidth, video.videoHeight, controlRef.current.detectionConfidence)
+            : null
+          session.seenFrames = candidate ? session.seenFrames + 1 : 0
+          const commander = session.seenFrames >= CONFIRM_FRAMES ? candidate : null
+          if (!commander) session.distance = null
+          else if (commander.distance !== null) {
+            // Smoothing keeps pose jitter from flipping the car between forward, stop and reverse.
+            session.distance =
+              session.distance === null
+                ? commander.distance
+                : session.distance + DISTANCE_SMOOTHING * (commander.distance - session.distance)
+          }
+          if (commander) commander.distance = session.distance
           const command = followingRef.current ? steer(commander, now) : null
 
           drawOverlay(canvasRef.current, video, pose, landmarks, commander, command, {
-            targetSize: controlRef.current.targetSize,
+            targetDistance: controlRef.current.targetDistance,
             following: followingRef.current,
             debug: debugRef.current,
           })
@@ -331,13 +437,17 @@ export function useVisionFollow({ steerToAngle, setDrive, stopAll, drivePower, s
     setFollowing,
     facingMode,
     switchCamera,
-    targetSize,
-    setTargetSize,
+    targetDistance,
+    setTargetDistance,
+    detectionConfidence,
+    setDetectionConfidence,
     debug,
     setDebug,
     telemetry,
     videoRef,
     canvasRef,
     toggleCamera,
+    swapSteering,
+    setSwapSteering,
   }
 }

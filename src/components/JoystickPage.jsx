@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 const DEAD_ZONE = 0.2
-const STEER_ZONE = 0.35
+const STEER_DEAD_ZONE = 0.15
 const POWER_STEP = 10
+const STEER_STEP = 0.1
 
 function drivePowerFor(y, minPower) {
   const amount = Math.abs(y)
@@ -12,62 +13,34 @@ function drivePowerFor(y, minPower) {
   return Math.min(100, Math.round(power / POWER_STEP) * POWER_STEP)
 }
 
-export function JoystickPage({
-  setDrive,
-  pulseSteering,
-  stopAll,
-  servoPulseMs,
-  setServoPulseMs,
-  servoSpeedPct,
-  setServoSpeedPct,
-  onBack,
-}) {
+function steerFractionFor(x) {
+  const amount = Math.abs(x)
+  if (amount <= STEER_DEAD_ZONE) return 0
+  const ratio = (amount - STEER_DEAD_ZONE) / (1 - STEER_DEAD_ZONE)
+  return Math.sign(x) * Math.min(1, Math.round(ratio / STEER_STEP) * STEER_STEP)
+}
+
+export function JoystickPage({ setDrive, steerServo, stopAll, steeringAngle, steeringLimits, onBack }) {
   const baseRef = useRef(null)
   const activePointerRef = useRef(null)
-  const steerTimerRef = useRef(null)
-  const steerDirRef = useRef(0)
   const inCenterRef = useRef(true)
-  const pulseSteeringRef = useRef(pulseSteering)
-  const burstIntervalRef = useRef(0)
 
   const [knob, setKnob] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
   const [minPower, setMinPower] = useState(50)
-  const [burstIntervalMs, setBurstIntervalMs] = useState(300)
   const [readout, setReadout] = useState({ power: 0, steer: 0 })
 
-  useEffect(() => {
-    pulseSteeringRef.current = pulseSteering
-  }, [pulseSteering])
-
-  useEffect(() => {
-    burstIntervalRef.current = burstIntervalMs
-  }, [burstIntervalMs])
-
-  const updateSteering = (dir) => {
-    if (steerDirRef.current === dir) return
-    steerDirRef.current = dir
-    clearInterval(steerTimerRef.current)
-    if (dir === 0) return
-    pulseSteeringRef.current(dir)
-    steerTimerRef.current = setInterval(() => pulseSteeringRef.current(dir), burstIntervalRef.current)
+  const stopAndCenter = () => {
+    setDrive(0)
+    steerServo(0)
+    setReadout({ power: 0, steer: 0 })
   }
-
-  // Restart the burst timer so a changed interval applies while still holding a side.
-  useEffect(() => {
-    const dir = steerDirRef.current
-    if (dir === 0) return
-    clearInterval(steerTimerRef.current)
-    steerTimerRef.current = setInterval(() => pulseSteeringRef.current(dir), burstIntervalMs)
-  }, [burstIntervalMs])
 
   const applyPosition = (x, y) => {
     const inCenter = Math.hypot(x, y) <= DEAD_ZONE
     if (inCenter) {
-      updateSteering(0)
-      if (!inCenterRef.current) stopAll()
+      if (!inCenterRef.current) stopAndCenter()
       inCenterRef.current = true
-      setReadout({ power: 0, steer: 0 })
       return
     }
     inCenterRef.current = false
@@ -76,8 +49,8 @@ export function JoystickPage({
     const power = drivePowerFor(y, minPower)
     setDrive(y < 0 ? -power : power)
 
-    const steer = Math.abs(x) >= STEER_ZONE ? Math.sign(x) : 0
-    updateSteering(steer)
+    const steer = steerFractionFor(x)
+    steerServo(steer)
     setReadout({ power: y < 0 ? power : -power, steer })
   }
 
@@ -98,28 +71,21 @@ export function JoystickPage({
     activePointerRef.current = null
     setDragging(false)
     setKnob({ x: 0, y: 0 })
-    updateSteering(0)
     inCenterRef.current = true
-    setReadout({ power: 0, steer: 0 })
-    stopAll()
+    stopAndCenter()
   }
 
-  useEffect(
-    () => () => {
-      clearInterval(steerTimerRef.current)
-    },
-    [],
-  )
-
   const handleBack = () => {
-    clearInterval(steerTimerRef.current)
-    steerDirRef.current = 0
     stopAll()
     onBack()
   }
 
   const powerLabel = readout.power === 0 ? 'STOP' : `${readout.power > 0 ? 'FWD' : 'BWD'} ${Math.abs(readout.power)}%`
-  const steerLabel = readout.steer === 0 ? 'straight' : readout.steer < 0 ? 'left bursts' : 'right bursts'
+  const steerSide = readout.steer < 0 ? 'left' : 'right'
+  const steerLabel =
+    readout.steer === 0
+      ? 'straight'
+      : `${Math.round(Math.abs(readout.steer) * 100)}% ${steerSide} of ${steeringLimits[steerSide]}°`
 
   return (
     <section className="joystick-page">
@@ -128,9 +94,15 @@ export function JoystickPage({
           ← Back to controller
         </button>
         <p className="joystick-readout">
-          <strong>{powerLabel}</strong> · {steerLabel}
+          <strong>{powerLabel}</strong> · {steerLabel} · wheels {steeringAngle === null ? '?' : `${steeringAngle}°`}
         </p>
       </div>
+
+      {steeringAngle === null && (
+        <p className="voice-warning">
+          No position reading from the steering motor, so steering uses plain position commands instead of pulses.
+        </p>
+      )}
 
       <div className="joystick-base" ref={baseRef}>
         <div className="joystick-dead-zone" style={{ width: `${DEAD_ZONE * 100}%`, height: `${DEAD_ZONE * 100}%` }} />
@@ -164,25 +136,8 @@ export function JoystickPage({
               <input type="range" min="10" max="100" step="10" value={minPower} onChange={(e) => setMinPower(Number(e.target.value))} />
             </div>
           </div>
-          <div className="servo-setting">
-            <label>Steer burst every: {burstIntervalMs} ms</label>
-            <div className="servo-setting-controls">
-              <input type="range" min="100" max="1000" step="50" value={burstIntervalMs} onChange={(e) => setBurstIntervalMs(Number(e.target.value))} />
-            </div>
-          </div>
-          <div className="servo-setting">
-            <label>Steer pulse length: {servoPulseMs} ms</label>
-            <div className="servo-setting-controls">
-              <input type="range" min="30" max="1000" step="10" value={servoPulseMs} onChange={(e) => setServoPulseMs(Number(e.target.value))} />
-            </div>
-          </div>
-          <div className="servo-setting">
-            <label>Steer pulse power: {servoSpeedPct}%</label>
-            <div className="servo-setting-controls">
-              <input type="range" min="10" max="100" step="10" value={servoSpeedPct} onChange={(e) => setServoSpeedPct(Number(e.target.value))} />
-            </div>
-          </div>
         </div>
+        <p className="hint">Steering pulse length, power, centre and limits are on the Settings page.</p>
       </div>
     </section>
   )

@@ -17,6 +17,28 @@ Keyboard controls:
 - Right: steer right while held
 - Key release: send stop for that axis
 
+## Joystick
+
+**Open joystick** (enabled while connected) opens a full-page joystick. Hold the ball and drag it:
+
+- **Centre:** stop and straighten the wheels. Releasing the ball does the same.
+- **Up / down:** drive forward / backward, from the minimum power (default 50%) just outside the centre to 100% at the edge.
+- **Left / right:** the steering angle follows how far the ball is to the side, up to the stored travel minus 5° at the edge. The steering motor is too stiff for gentle position commands, so the app pulses it towards the target angle and checks the motor encoder after each pulse. It learns how many degrees the wheels move per millisecond of pulse and sizes each pulse to about 80% of the remaining gap, so it creeps up on the target instead of overshooting. Pulses never exceed the pulse length setting. If it does overshoot, it halves the maximum pulse length. It gives up if four full-length pulses in a row do not move the wheels.
+- **Full-lock detection (opt-in, off by default):** with this turned on in Settings and the ball at the side edge, the app ignores the stored travel and pulses until the wheels stop moving (2 pulses in a row with less than 2° of movement). It then holds them there and re-pushes if they get knocked back. If that end stop is further out than the stored travel, the travel is widened.
+
+## Settings
+
+The **Settings** button opens a page with the steering calibration, the servo pulse settings, the tilt sensor and the command log.
+
+- **Auto-calibrate** pushes the wheels left until the encoder stops changing, then right, and sets the centre halfway between the two end stops. Lift the front wheels off the ground first; on the ground the steering can stall before it reaches the end stops, which gives too small a travel. The usable travel is half the range, minus 5° so the joystick never pushes against the end stops.
+- **Nudge left / right** and **Set current as centre** fine-tune the centre if the car still pulls to one side.
+- **Full-lock detection** is a checkbox, off by default. See the joystick section.
+- The travel, tolerance, pulse length, pulse power and full-lock setting are saved in the browser. The encoder is reset to zero when you connect, so the wheels should be straight when you connect, or you should recalibrate.
+
+## STOP
+
+STOP, from the button, the voice command, the joystick page or the camera page, always sends a brake to every motor: rear drive (B), front drive (D) and steering (A). It then centres the steering. The commands are sent even if the app thinks a motor is already stopped, because the keyboard and test keys drive the motors directly.
+
 ## Voice control
 
 Voice control uses [Vosk](https://alphacephei.com/vosk/) via [vosk-browser](https://github.com/ccoreilly/vosk-browser) (Apache 2.0). Speech is recognised entirely in the browser, so no audio is sent to a server. The recogniser is limited to the command phrases below, which makes it accurate for short commands and makes it ignore other speech.
@@ -45,7 +67,7 @@ Notes:
 - "Stop" works without "car" and is acted on as soon as it is heard, before the phrase finishes.
 - Forward and backward keep driving until you say "stop", press STOP, or turn the mic off, unless you give a duration such as "car go forward two seconds".
 - Steering commands during a timed drive do not cancel the timer. A new forward, backward or stop command replaces it.
-- Each left/right command is a single steering pulse. Increase the pulse duration in Servo Settings for bigger turns.
+- Each left/right command is a single steering pulse. Increase the pulse duration in Servo Settings (on the Settings page) for bigger turns.
 - Microphone access needs HTTPS or `localhost`, the same as Web Bluetooth.
 - Motor noise reduces accuracy, so speak close to the device running the page.
 - The model is loaded from `https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-en-us-0.15.tar.gz` by default. To host it yourself, set `VITE_VOSK_MODEL_URL` at build time to another URL that serves the `.tar.gz` with CORS enabled.
@@ -57,25 +79,27 @@ Camera follow mode uses [MediaPipe Pose Landmarker](https://ai.google.dev/edge/m
 How to use it:
 
 1. Open the page on a phone and connect to the hub. Android Chrome supports both Web Bluetooth and the camera. iOS browsers do not support Web Bluetooth.
-2. Mount the phone on the car with the back camera facing forward, so the feed shows what the car sees.
-3. Tap the **CAMERA** button. The camera is off by default. The first time, the pose model (about 6 MB) and the MediaPipe engine (about 4 MB compressed) are downloaded.
-4. Check the feed window. The commander is drawn with a skeleton, a bounding box and a dot on the torso. Blue means tracking only.
-5. Tap **START FOLLOWING**. The overlay turns green and the car starts following.
+2. Tap **Camera follow** on the main page. All camera controls are on this page, laid out for a phone: the feed on top, then large CAMERA, START FOLLOWING and STOP buttons, then the options and sliders. **Back** turns the camera off and stops the car.
+3. Mount the phone on the car with the back camera facing forward, so the feed shows what the car sees.
+4. Tap **CAMERA ON**. The camera is off by default. The first time, the pose model (about 6 MB) and the MediaPipe engine (about 4 MB compressed) are downloaded.
+5. Check the feed window. The commander is drawn with a skeleton, a bounding box and a dot on the torso. Blue means tracking only.
+6. Tap **START FOLLOWING**. The overlay turns green and the car starts following.
 
 How following works:
 
-- **Steering:** the car steers towards the centre of the commander's torso. Inside the centre zone, shown by the dashed lines, it drives straight. Further off-centre it steers harder, up to the full steering angle. It uses absolute steering positions. On this car a positive steering-motor angle turns the wheels left, so follow mode inverts the sign (`STEER_MOTOR_DIRECTION` in `useVisionFollow.js`).
-- **Distance:** the commander's height in the frame stands in for distance. The car drives forward until the commander fills the follow distance (default 70% of the frame height), then stops. It starts again once the commander drops 8% below that. The outlined bar on the right of the feed shows the follow distance, and the solid bar shows the commander's current height.
-- **Power:** the car drives at full power, the same as the FWD button. Lower power was too weak to move the car.
-- **Command overlay:** while following, the bottom of the feed shows the current command. It is an arrow leaning the way the car is turning, a red STOP when close enough, or a grey LOST when nobody is in view.
+- **Steering:** the car steers towards the centre of the commander's torso, using the same encoder-guided steering as the joystick. Outside the centre zone, shown by the dashed lines, it aims for one third, two thirds or all of the steering travel, depending on how far off-centre the commander is. Back inside the centre zone it re-centres the wheels. While reversing the steering is mirrored so the car still turns towards the commander. Positive steering is right, the same as the joystick. If the car turns away from you, turn on **Swap left/right**.
+- **Distance:** distance is estimated in metres from the length of the commander's torso (shoulders to hips), assuming a 0.5 m torso and a 65° camera field of view across the long side of the image. If the hips are out of frame it falls back to shoulder width. The car drives forward when the commander is more than 15% further than the follow distance and reverses when they are more than 15% closer, then stops once it reaches the follow distance. Change `TORSO_LENGTH_M` or `CAMERA_LONG_SIDE_FOV_DEG` if the estimate in the top right of the feed is consistently off.
+- **Power:** the car drives at full power forwards and backwards, the same as the FWD and BWD buttons. Lower power was too weak to move the car.
+- **Command overlay:** while following, the bottom of the feed shows the current command. It is an up arrow when driving forward, a down arrow when reversing (both lean the way the wheels are turned), a red STOP at the follow distance, or a grey LOST when nobody is in view.
 - **Debug mode:** the **Debug** button keeps follow mode working out commands and drawing them, as yellow arrows with a "DEBUG · commands not sent" banner, but sends nothing over Bluetooth. Turning debug on stops the car.
-- **Settings:** the follow distance can be adjusted with the slider under the feed. **Switch camera** toggles between the back and front cameras.
+- **Settings:** the follow distance slider under the feed runs from 3.5 m on the left to 0.5 m on the right, with 2 m in the middle (the default). **Use front / back camera** toggles between the cameras.
+- **Avoiding phantom people:** the **Detection strictness** slider (50–90%, default 70%) sets MediaPipe's detection, presence and tracking confidence, and the minimum visibility each landmark needs to count. On top of that, a pose only becomes the commander when both shoulders and at least 8 landmarks are visible for 4 detections in a row (about a quarter of a second). Raise the slider if it tracks things that are not people; lower it if it loses you in poor light or at a distance.
 
 Safety:
 
 - The car stops and centres the steering if nobody is seen for about 0.6 seconds.
 - The STOP button, the voice "stop" command, turning the camera off, switching cameras, and switching away from the page all end following.
-- The car never reverses in follow mode.
+- The car reverses at full power when the commander comes closer than the follow distance, so keep the space behind it clear.
 
 The pose model is loaded from Google's MediaPipe model storage by default. To host it yourself, set `VITE_POSE_MODEL_URL` at build time. The MediaPipe WebAssembly engine is bundled with the app.
 
